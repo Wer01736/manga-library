@@ -1,0 +1,5 @@
+#editGrid .item-actions button[data-action="rename"],
+#editGrid .item-actions button[data-action="first"] { display:none; }
+#editGrid .item-name { cursor:text; }
+#editGrid .item-name::after { content:'（雙擊改名）'; margin-left:5px; color:var(--muted); font-size:10px; }
+#editGrid .inline-name-input { width:100%; min-width:0; padding:4px 5px; border:1px solid var(--accent); border-radius:5px; background:#fff; color:var(--ink); font:inherit; font-size:11px; outline:0; }

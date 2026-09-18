@@ -1,0 +1,27 @@
+# Runtime data and personal library indexes
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Logs and temporary output
+*.log
+tmp*/
+.test_runtime/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local configuration and editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

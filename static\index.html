@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>本機漫畫書庫</title>
+  <link rel="stylesheet" href="/styles.css?v=20260809-2">
+  <link rel="stylesheet" href="/enhancements.css?v=20260831-2">
+  <link rel="stylesheet" href="/reorder-fast.css?v=20260811-8">
+  <link rel="stylesheet" href="/pagination-jump.css?v=20260811-1">
+  <link rel="stylesheet" href="/editor-actions.css?v=20260811-2">
+  <link rel="stylesheet" href="/inline-image-rename.css?v=20260811-2">
+  <link rel="stylesheet" href="/virtual-editor.css?v=20260811-3">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span>漫</span><div><strong>本機漫畫書庫</strong><small>ZIP / CBZ 管理器</small></div></div>
+    <button id="addRoot" class="primary full">＋ 新增掃描資料夾</button>
+    <button id="scan" class="ghost full">↻ 重新掃描書庫</button>
+    <section><h3>掃描位置</h3><div id="roots" class="root-list muted">尚未設定</div></section>
+    <details class="sidebar-accordion">
+      <summary><span>作者</span><span id="authorCount">0</span></summary>
+      <div id="authors" class="nav-list accordion-list"></div>
+    </details>
+    <section><h3 class="section-title"><span>自訂分組</span><button id="addGroup" title="建立分組">＋</button></h3><select id="groups" class="sidebar-select"><option value="">全部分組</option></select></section>
+    <section><h3 class="section-title"><span>標籤</span><button id="addTag" title="建立標籤">＋</button></h3><select id="tags" class="sidebar-select"><option value="">全部標籤</option></select></section>
+    <div class="privacy">🔒 所有檔案只在這台電腦處理</div>
+  </aside>
+
+  <main>
+    <header>
+      <div><p class="eyebrow">LOCAL LIBRARY</p><h1>我的漫畫收藏</h1><p id="summary" class="muted">讀取書庫中…</p></div>
+      <div class="header-actions"><button id="webDownload" class="primary web-download-launch"><span>從網頁下載漫畫</span><span id="webDownloadIndicator" class="web-download-indicator hidden" aria-live="polite"></span></button><button id="hashDuplicates" class="ghost">檢查完全重複</button></div>
+    </header>
+    <div class="toolbar">
+      <label class="search">⌕<input id="search" placeholder="搜尋作品、作者、分組、路徑或集數…"></label>
+      <select id="sort"><option value="name">名稱排序</option><option value="author">作者排序</option><option value="group_name">分組排序</option><option value="modified_at" selected>修改時間</option><option value="size_bytes">檔案大小</option></select>
+      <select id="direction"><option value="desc" selected>由大到小／新到舊</option><option value="asc">由小到大／舊到新</option></select>
+      <button id="clearFilter" class="ghost">清除篩選</button>
+    </div>
+    <div id="batchBar" class="batch-bar hidden"><strong id="selectedCount">已選 0 本</strong><button id="batchGroup" class="primary">加入分組</button><button id="batchTag" class="ghost">加入標籤</button><button id="batchAuthor" class="ghost">設定作者</button><button id="clearSelection" class="ghost">取消選取</button></div>
+    <div id="empty" class="empty hidden"><div>📚</div><h2>書庫目前是空的</h2><p>新增漫畫資料夾後進行掃描，原始檔案不會被移動或改寫。</p></div>
+    <div id="library" class="library"></div>
+    <nav id="libraryPagination" class="library-pagination hidden" aria-label="書庫分頁"></nav>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <dialog id="detailDialog" class="detail-dialog">
+    <button class="dialog-close" data-close="detailDialog">×</button>
+    <div id="detailBody"></div>
+  </dialog>
+
+  <div id="reader" class="reader hidden" tabindex="-1">
+    <div class="reader-top">
+      <button id="closeReader" class="dark-button">← 返回書庫</button>
+      <div class="reader-title hidden"><strong id="readerTitle"></strong><small id="readerFile"></small></div>
+      <div class="reader-actions"><span id="dirtyBadge" class="dirty hidden"></span><button id="editOrder" class="dark-button">調整順序</button></div>
+    </div>
+    <div class="reader-stage">
+      <button id="previous" class="page-button">‹</button>
+      <img id="pageImage" alt="漫畫頁面">
+      <button id="next" class="page-button">›</button>
+    </div>
+    <button id="toggleThumbs" class="dark-button thumbnail-toggle">縮圖總覽</button>
+    <div class="reader-bottom"><span id="pageName"></span><span id="pageCounter"></span></div>
+    <div id="thumbStrip" class="thumb-strip hidden"></div>
+  </div>
+
+  <div id="editor" class="editor hidden">
+    <div class="editor-head">
+      <div><p class="eyebrow">暫存工作區</p><h2>調整圖片順序</h2><p>拖曳縮圖排序；刪除與改名也會先留在暫存狀態。</p></div>
+      <div><button id="discard" class="ghost">放棄修改</button><button id="returnReader" class="ghost">返回閱讀確認</button><button id="apply" class="danger">套用並覆蓋</button></div>
+    </div>
+    <div id="editSummary" class="edit-summary"></div>
+    <div id="editGrid" class="edit-grid"></div>
+  </div>
+
+  <dialog id="confirmDialog" class="confirm-dialog">
+    <form method="dialog">
+      <div class="warning-icon">!</div><h2>這會實際覆蓋壓縮檔</h2>
+      <div id="confirmSummary" class="confirm-summary"></div>
+      <p class="warning">新檔驗證成功後將覆蓋正式檔，舊檔會立即刪除，操作無法復原。</p>
+      <label>請輸入「套用並覆蓋」確認<input id="confirmText" autocomplete="off"></label>
+      <div class="dialog-actions"><button value="cancel" class="ghost">取消</button><button id="confirmApply" value="default" class="danger">確認覆蓋</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="groupDialog" class="group-dialog">
+    <button class="dialog-close" data-close="groupDialog">×</button>
+    <h2>把選取的漫畫加入分組</h2>
+    <p id="groupSelectionSummary" class="muted"></p>
+    <label>選擇分組<select id="groupSelect"></select></label>
+    <label>或輸入分組（可多個，以逗號分隔）<input id="newGroupName" placeholder="例如：待整理, 最愛, 同系列"></label>
+    <div class="dialog-actions"><button class="ghost" data-close="groupDialog">取消</button><button id="saveBatchGroup" class="primary">儲存分組</button></div>
+  </dialog>
+
+  <dialog id="webDownloadDialog" class="web-download-dialog">
+    <button id="minimizeWebDownload" class="dialog-minimize" type="button" title="縮小下載視窗" aria-label="縮小下載視窗">—</button>
+    <button class="dialog-close" data-close="webDownloadDialog">×</button>
+    <p class="eyebrow">WEB IMPORT</p>
+    <h2>從漫畫目錄網址下載</h2>
+    <p class="muted">貼上 WNACG 漫畫目錄網址。系統會先確認名稱與總頁數，全部圖片齊全且順序驗證成功後才建立 ZIP。</p>
+    <label class="web-download-mode"><input id="webDownloadBatchMode" type="checkbox"><span>批次下載（一次貼上多個網址）</span></label>
+    <label id="webDownloadSingleField">漫畫目錄網址<input id="webDownloadUrl" type="url" autocomplete="off" placeholder="https://www.wnacg.com/photos-index-page-1-aid-....html"></label>
+    <label id="webDownloadBatchField" class="hidden">漫畫目錄網址<input id="webDownloadUrls" type="url" autocomplete="off" placeholder="貼上一個或一次貼上多個網址，系統會自動檢查並下載"><small>可一次貼上多行網址；也可逐筆貼上或輸入後按 Enter。</small></label>
+    <label>儲存到書庫<select id="webDownloadRoot"></select></label>
+    <div id="webDownloadPreview" class="web-download-preview hidden"></div>
+    <div class="web-download-retry-all"><button id="retryFailedWebDownloads" class="ghost hidden" type="button">重新下載所有失敗項目</button></div>
+    <div id="webDownloadJobs" class="web-download-jobs hidden"></div>
+    <div class="dialog-actions">
+      <button id="previewWebDownload" class="ghost">檢查名稱與頁數</button>
+      <button id="startWebDownload" class="primary" disabled>開始下載並建立 ZIP</button>
+    </div>
+  </dialog>
+
+  <dialog id="duplicatesDialog" class="duplicates-dialog">
+    <button class="dialog-close" data-close="duplicatesDialog">×</button>
+    <p class="eyebrow">DUPLICATE CHECK</p><h2>重複內容檢查</h2>
+    <div class="duplicate-explain"><strong>完全相同</strong>：整個 ZIP 的 SHA-256 相同。<br><strong>疑似相同內容</strong>：頁數接近，並抽樣比較 5 張圖片的視覺特徵；只能作為提示。</div>
+    <div class="duplicate-actions"><button id="runExact" class="primary">重新整理</button></div>
+    <div id="duplicateStatus" class="muted"></div>
+    <div id="duplicateResults" class="duplicate-results"></div>
+  </dialog>
+
+  <dialog id="deleteDialog" class="delete-dialog">
+    <div class="warning-icon">!</div>
+    <h2>確定要刪除嗎？</h2>
+    <p>這會直接刪除壓縮檔，操作無法復原。</p>
+    <div class="delete-target"><strong id="deleteFileName"></strong><small id="deleteFilePath"></small></div>
+    <div class="dialog-actions"><button id="cancelDelete" class="ghost">不要</button><button id="confirmDelete" class="danger">可以，刪除</button></div>
+  </dialog>
+  <script src="/app.js?v=20260809-3"></script>
+  <script src="/enhancements.js?v=20260831-2"></script>
+  <script src="/reorder-fast.js?v=20260811-6"></script>
+  <script src="/pagination-jump.js?v=20260811-1"></script>
+  <script src="/editor-actions.js?v=20260811-1"></script>
+  <script src="/inline-image-rename.js?v=20260811-1"></script>
+  <script src="/stable-editor.js?v=20260815-1"></script>
+  <link rel="stylesheet" href="/issues.css?v=20260813-1">
+  <script src="/issues.js?v=20260813-1"></script>
+  <link rel="stylesheet" href="/duplicate-background.css?v=20260813-1">
+  <script src="/duplicate-background.js?v=20260813-1"></script>
+  <script src="/file-time.js?v=20260813-1"></script>
+</body>
+</html>

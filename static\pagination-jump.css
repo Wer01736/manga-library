@@ -1,0 +1,5 @@
+.pagination-jump { display:flex; align-items:center; gap:6px; margin:0 5px; color:var(--muted); font-size:13px; white-space:nowrap; }
+.pagination-jump label { display:flex; align-items:center; gap:5px; }
+.pagination-jump input { width:58px; height:34px; padding:0 7px; border:1px solid var(--line); border-radius:5px; background:#fffdf8; color:var(--ink); font:inherit; text-align:center; }
+.pagination-jump input:focus { outline:2px solid rgba(69,98,77,.25); border-color:var(--accent); }
+.pagination-jump button { min-width:auto; }
