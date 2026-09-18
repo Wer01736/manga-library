@@ -153,4 +153,3 @@
 .web-download-progress.failed { border-color:#d9aaa4; background:#f8e8e5; }
 .web-download-progress.completed { border-color:#a9c6aa; background:#e5f1e4; }
 .header-actions { display:flex; flex-wrap:wrap; gap:8px; }
-

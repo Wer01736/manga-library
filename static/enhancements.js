@@ -1352,4 +1352,3 @@ $('#webDownloadJobs').onclick = async event => {
 };
 
 Promise.all([loadLibrary(), loadRoots(), loadReadingPosition(), restoreActiveWebDownloads()]).catch(error => toast(error.message, true));
-
