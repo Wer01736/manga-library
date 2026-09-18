@@ -17,6 +17,7 @@
     <div class="brand"><span>漫</span><div><strong>本機漫畫書庫</strong><small>ZIP / CBZ 管理器</small></div></div>
     <button id="addRoot" class="primary full">＋ 新增掃描資料夾</button>
     <button id="scan" class="ghost full">↻ 重新掃描書庫</button>
+    <button id="readingMarkers" class="marker-nav" type="button" title="只顯示已留下閱讀定位的漫畫"><span>📍 已標記漫畫</span><span id="markerCount">0</span></button>
     <section><h3>掃描位置</h3><div id="roots" class="root-list muted">尚未設定</div></section>
     <details class="sidebar-accordion">
       <summary><span>作者</span><span id="authorCount">0</span></summary>
@@ -30,7 +31,7 @@
   <main>
     <header>
       <div><p class="eyebrow">LOCAL LIBRARY</p><h1>我的漫畫收藏</h1><p id="summary" class="muted">讀取書庫中…</p></div>
-      <div class="header-actions"><button id="webDownload" class="primary web-download-launch"><span>從網頁下載漫畫</span><span id="webDownloadIndicator" class="web-download-indicator hidden" aria-live="polite"></span></button><button id="hashDuplicates" class="ghost">檢查完全重複</button></div>
+      <div class="header-actions"><button id="returnReadingPosition" class="ghost" type="button">🔖 回到上次位置</button><button id="webDownload" class="primary web-download-launch"><span>從網頁下載漫畫</span><span id="webDownloadIndicator" class="web-download-indicator hidden" aria-live="polite"></span></button><button id="hashDuplicates" class="ghost">檢查完全重複</button></div>
     </header>
     <div class="toolbar">
       <label class="search">⌕<input id="search" placeholder="搜尋作品、作者、分組、路徑或集數…"></label>
@@ -144,3 +145,4 @@
   <script src="/file-time.js?v=20260813-1"></script>
 </body>
 </html>
+

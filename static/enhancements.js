@@ -2,9 +2,12 @@ state.selected = new Set();
 state.customGroups = [];
 state.filter.root = '';
 state.filter.tag = '';
+state.filter.marker = false;
 state.tags = [];
 state.libraryPage = 1;
 state.libraryQueryKey = '';
+state.readingPosition = null;
+state.markerViewReturn = null;
 const LIBRARY_PAGE_SIZE = 50;
 // Remove the obsolete global button if an older cached HTML shell is still open.
 $('#runSimilar')?.remove();
@@ -14,6 +17,118 @@ let duplicateReviewContext = null;
 let detailTags = [];
 const originalFileAction = fileAction;
 const originalStartReader = startReader;
+
+function updateReadingPositionButton() {
+  const button = $('#returnReadingPosition');
+  if (!button) return;
+  const hasPosition = Boolean(state.readingPosition?.set);
+  button.classList.toggle('hidden', !hasPosition);
+  if (hasPosition) button.title = '回到上次看到的漫畫位置';
+}
+
+async function loadReadingPosition() {
+  state.readingPosition = await api('/api/reading-position');
+  updateReadingPositionButton();
+}
+
+function currentLibraryView() {
+  const start = Math.max(0, (state.libraryPage - 1) * LIBRARY_PAGE_SIZE);
+  return {
+    search: $('#search').value,
+    filter: {
+      author: state.filter.author || '',
+      group: state.filter.group || '',
+      tag: state.filter.tag || '',
+      root: state.filter.root || '',
+      marker: false
+    },
+    sort: $('#sort').value,
+    direction: $('#direction').value,
+    page: state.libraryPage,
+    anchorId: state.items[start]?.id || null,
+    scrollTop: window.scrollY || 0
+  };
+}
+
+async function restoreLibraryView(view) {
+  const saved = view || {};
+  const filter = saved.filter || {};
+  state.filter = {
+    author: filter.author || '',
+    group: filter.group || '',
+    tag: filter.tag || '',
+    root: filter.root || '',
+    marker: false
+  };
+  $('#search').value = saved.search || '';
+  $('#sort').value = saved.sort || 'modified_at';
+  $('#direction').value = saved.direction || 'desc';
+  state.libraryPage = 1;
+  state.libraryQueryKey = '';
+  await loadLibrary();
+  const anchorIndex = saved.anchorId == null
+    ? -1
+    : state.items.findIndex(item => item.id === Number(saved.anchorId));
+  const pageCount = Math.max(1, Math.ceil(state.items.length / LIBRARY_PAGE_SIZE));
+  state.libraryPage = anchorIndex >= 0
+    ? Math.floor(anchorIndex / LIBRARY_PAGE_SIZE) + 1
+    : Math.min(Math.max(1, Number(saved.page) || 1), pageCount);
+  renderCards();
+  requestAnimationFrame(() => {
+    const target = anchorIndex >= 0 ? document.querySelector(`[data-id="${CSS.escape(String(saved.anchorId))}"]`) : null;
+    if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    else window.scrollTo({ top: Number(saved.scrollTop) || 0, behavior: 'smooth' });
+  });
+}
+
+async function setReadingPosition(comicId) {
+  const context = currentLibraryView();
+  context.targetId = comicId;
+  const result = await api('/api/reading-position', {
+    method: 'PUT',
+    body: JSON.stringify({ comic_id: Number(comicId), context })
+  });
+  state.readingPosition = result;
+  updateReadingPositionButton();
+  await loadLibrary();
+}
+
+async function clearReadingPosition() {
+  await api('/api/reading-position', { method: 'DELETE' });
+  state.readingPosition = { set: false };
+  updateReadingPositionButton();
+  await loadLibrary();
+}
+
+async function goToReadingPosition() {
+  const position = state.readingPosition;
+  if (!position?.set) {
+    toast('目前還沒有設定上次閱讀位置', true);
+    return;
+  }
+  state.markerViewReturn = null;
+  const context = position.context || {};
+  state.filter = { ...(context.filter || {}), marker: false };
+  $('#search').value = context.search || '';
+  $('#sort').value = context.sort || 'modified_at';
+  $('#direction').value = context.direction || 'desc';
+  state.libraryPage = 1;
+  state.libraryQueryKey = '';
+  await loadLibrary();
+  const index = state.items.findIndex(item => item.id === Number(position.comic_id));
+  if (index < 0) {
+    toast('上次閱讀的漫畫目前不存在，請重新設定閱讀位置', true);
+    return;
+  }
+  state.libraryPage = Math.floor(index / LIBRARY_PAGE_SIZE) + 1;
+  renderCards();
+  requestAnimationFrame(() => {
+    const target = document.querySelector(`[data-id="${CSS.escape(String(position.comic_id))}"]`);
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target?.classList.add('reading-position-target');
+    setTimeout(() => target?.classList.remove('reading-position-target'), 2200);
+  });
+}
 
 function rememberDuplicatePosition() {
   duplicateReviewContext = {
@@ -67,7 +182,7 @@ showDetail = async function (id) {
   const authorButtons = authors.length
     ? authors.map(author => `<button type="button" class="detail-author-search" data-search-detail-author="${esc(author)}" title="搜尋 ${esc(author)} 的其他作品">${esc(author)}</button>`).join('')
     : '<span class="detail-author-empty">尚未設定作者</span>';
-  $('#detailBody').innerHTML = `<div class="detail-grid"><div class="detail-cover-column"><img class="detail-cover" src="${c.cover_name ? imageUrl(c.id, c.cover_name) : ''}"><div class="detail-author-panel"><div class="detail-author-heading"><span>作者</span><span class="author-source ${sourceClass}">${sourceLabel}</span></div><div class="detail-author-buttons">${authorButtons}</div><button type="button" class="ghost detail-author-edit" id="editDetailAuthor">${authors.length ? '修改作者' : '設定作者'}</button></div></div><div class="detail-info"><p class="eyebrow">${esc(c.extension.slice(1).toUpperCase())} · ${c.image_count} 頁</p><h2>${esc(c.name)}</h2><dl><dt>推測作品</dt><dd>${esc(c.title_guess || '—')}</dd><dt>集數</dt><dd>${esc(c.volume_guess || '—')}</dd><dt>大小</dt><dd>${fmt(c.size_bytes)}</dd><dt>完整路徑</dt><dd>${esc(c.path)}</dd>${c.error ? `<dt>錯誤</dt><dd>${esc(c.error)}</dd>` : ''}</dl><div class="detail-primary-actions"><button class="primary" id="readComic">開始閱讀</button><button class="danger" id="deleteFile">刪除</button></div><details class="detail-settings"><summary>⚙ 設定</summary><div class="detail-fields"><label>作者<input id="authorInput" value="${esc(c.author)}" placeholder="可留空"></label><label>分組（可多個，以逗號分隔）<input id="groupsInput" value="${esc((c.groups || []).join(', '))}" placeholder="例如：最愛, 待整理"></label><label class="wide-field">標籤<div id="tagEditor" class="tag-editor"><div id="tagChips" class="tag-chips"></div><input id="tagChipInput" autocomplete="off" placeholder="輸入標籤後按 Enter"></div><small>按 Enter 或輸入逗號建立標籤；點 × 移除</small></label></div><div class="detail-actions"><button class="primary" id="saveMetadata">儲存設定</button><button class="ghost" id="openFolder">開啟所在資料夾</button><button class="ghost" id="renameFile">重新命名</button><button class="ghost" id="moveFile">移動</button></div></details></div></div>`;
+  $('#detailBody').innerHTML = `<div class="detail-grid"><div class="detail-cover-column"><img class="detail-cover" src="${c.cover_name ? imageUrl(c.id, c.cover_name) : ''}"><div class="detail-author-panel"><div class="detail-author-heading"><span>作者</span><span class="author-source ${sourceClass}">${sourceLabel}</span></div><div class="detail-author-buttons">${authorButtons}</div><button type="button" class="ghost detail-author-edit" id="editDetailAuthor">${authors.length ? '修改作者' : '設定作者'}</button></div></div><div class="detail-info"><p class="eyebrow">${esc(c.extension.slice(1).toUpperCase())} · ${c.image_count} 頁</p><h2>${esc(c.name)}</h2><dl><dt>推測作品</dt><dd>${esc(c.title_guess || '—')}</dd><dt>集數</dt><dd>${esc(c.volume_guess || '—')}</dd><dt>大小</dt><dd>${fmt(c.size_bytes)}</dd><dt>完整路徑</dt><dd>${esc(c.path)}</dd>${c.error ? `<dt>錯誤</dt><dd>${esc(c.error)}</dd>` : ''}</dl><div class="detail-primary-actions"><button class="primary" id="readComic">開始閱讀</button><button class="ghost icon-action" id="toggleReadingPosition" aria-label="${c.reading_position ? '清除上次位置' : '設為上次看到這裡'}" title="${c.reading_position ? '清除上次位置' : '設為上次看到這裡'}">🔖</button><button class="ghost icon-action" id="toggleReadingMarker" aria-label="${c.reading_marker ? '移除標記' : '設為標記'}" title="${c.reading_marker ? '移除標記' : '設為標記'}">📍</button><button class="danger" id="deleteFile">刪除</button></div><details class="detail-settings"><summary>⚙ 設定</summary><div class="detail-fields"><label>作者<input id="authorInput" value="${esc(c.author)}" placeholder="可留空"></label><label>分組（可多個，以逗號分隔）<input id="groupsInput" value="${esc((c.groups || []).join(', '))}" placeholder="例如：最愛, 待整理"></label><label class="wide-field">標籤<div id="tagEditor" class="tag-editor"><div id="tagChips" class="tag-chips"></div><input id="tagChipInput" autocomplete="off" placeholder="輸入標籤後按 Enter"></div><small>按 Enter 或輸入逗號建立標籤；點 × 移除</small></label></div><div class="detail-actions"><button class="primary" id="saveMetadata">儲存設定</button><button class="ghost" id="openFolder">開啟所在資料夾</button><button class="ghost" id="renameFile">重新命名</button><button class="ghost" id="moveFile">移動</button></div></details></div></div>`;
   renderDetailTags();
   $('#detailDialog').showModal();
 };
@@ -110,12 +225,45 @@ $('#detailBody').addEventListener('focusout', event => {
 });
 
 $('#detailBody').addEventListener('click', event => {
+  const positionButton = event.target.closest('#toggleReadingPosition');
+  if (positionButton) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const comicId = state.comic.id;
+    const action = state.comic.reading_position ? clearReadingPosition() : setReadingPosition(comicId);
+    action.then(async () => {
+      state.comic.reading_position = !state.comic.reading_position;
+      positionButton.textContent = '🔖';
+      positionButton.setAttribute('aria-label', state.comic.reading_position ? '清除上次位置' : '設為上次看到這裡');
+      positionButton.title = state.comic.reading_position ? '清除上次位置' : '設為上次看到這裡';
+      toast(state.comic.reading_position ? '已記住上次看到這本漫畫的位置' : '已清除上次閱讀位置');
+    }).catch(error => toast(error.message, true));
+    return;
+  }
+  const markerButton = event.target.closest('#toggleReadingMarker');
+  if (markerButton) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    api(`/api/comics/${state.comic.id}/reading-marker`, {
+      method: 'PUT',
+      body: JSON.stringify({ marked: !state.comic.reading_marker })
+    }).then(async () => {
+      const marked = !state.comic.reading_marker;
+      state.comic.reading_marker = marked;
+      markerButton.textContent = '📍';
+      markerButton.setAttribute('aria-label', marked ? '移除標記' : '設為標記');
+      markerButton.title = marked ? '移除標記' : '設為標記';
+      toast(marked ? '已設為標記' : '已移除標記');
+      await loadLibrary();
+    }).catch(error => toast(error.message, true));
+    return;
+  }
   const authorSearch = event.target.closest('[data-search-detail-author]');
   if (authorSearch) {
     const author = authorSearch.dataset.searchDetailAuthor;
     $('#detailDialog').close();
     $('#search').value = author;
-    state.filter = { author, group: '', tag: '', root: '' };
+    state.filter = { author, group: '', tag: '', root: '', marker: false };
     state.libraryPage = 1;
     loadLibrary().then(() => toast(`正在顯示 ${author} 的作品`)).catch(error => toast(error.message, true));
     return;
@@ -318,7 +466,8 @@ loadLibrary = async function () {
     author: state.filter.author,
     group: state.filter.group,
     tag: state.filter.tag,
-    root: state.filter.root
+    root: state.filter.root,
+    marker: state.filter.marker ? '1' : '0'
   });
   const queryKey = q.toString();
   if (state.libraryQueryKey && state.libraryQueryKey !== queryKey) state.libraryPage = 1;
@@ -327,7 +476,11 @@ loadLibrary = async function () {
   state.items = data.items;
   const pageCount = Math.max(1, Math.ceil(state.items.length / LIBRARY_PAGE_SIZE));
   state.libraryPage = Math.min(Math.max(1, state.libraryPage), pageCount);
-  $('#summary').textContent = `${data.items.length} 個檔案${state.filter.root ? ' · 指定掃描位置' : ' · 全部位置'}${state.filter.author ? ` · 作者：${state.filter.author}` : ''}${state.filter.group ? ` · 分組：${state.filter.group}` : ''}${state.filter.tag ? ` · 標籤：${state.filter.tag}` : ''}`;
+  updateReadingPositionButton();
+  $('#markerCount').textContent = data.marker_count || 0;
+  $('#readingMarkers').classList.toggle('active', state.filter.marker);
+  $('#readingMarkers span:first-child').textContent = state.filter.marker ? '← 回到原本位置' : '📍 已標記漫畫';
+  $('#summary').textContent = `${data.items.length} 個檔案${state.filter.marker ? ' · 閱讀定位' : state.filter.root ? ' · 指定掃描位置' : ' · 全部位置'}${state.filter.author ? ` · 作者：${state.filter.author}` : ''}${state.filter.group ? ` · 分組：${state.filter.group}` : ''}${state.filter.tag ? ` · 標籤：${state.filter.tag}` : ''}`;
   renderNav('authors', data.authors, 'author');
   $('#authors').insertAdjacentHTML('afterbegin', `<button class="${state.filter.author ? '' : 'active'}" data-filter="author" data-value=""><span>全部作者</span><span>${data.authors.length}</span></button>`);
   $('#authorCount').textContent = data.authors.length;
@@ -339,11 +492,13 @@ loadLibrary = async function () {
 
 $('#groups').addEventListener('change', event => {
   state.filter.group = event.target.value;
+  state.filter.marker = false;
   loadLibrary().catch(error => toast(error.message, true));
 });
 
 $('#tags').addEventListener('change', event => {
   state.filter.tag = event.target.value;
+  state.filter.marker = false;
   loadLibrary().catch(error => toast(error.message, true));
 });
 
@@ -357,6 +512,7 @@ $('#authors').addEventListener('click', event => {
   event.stopImmediatePropagation();
   state.filter.author = button.dataset.value;
   state.filter.group = '';
+  state.filter.marker = false;
   loadLibrary().catch(error => toast(error.message, true));
 }, true);
 
@@ -364,14 +520,41 @@ $('#roots').addEventListener('click', event => {
   const button = event.target.closest('[data-root]');
   if (!button) return;
   state.filter.root = button.dataset.root;
+  state.filter.marker = false;
   state.selected.clear();
   loadLibrary().catch(error => toast(error.message, true));
 });
 
 $('#clearFilter').onclick = () => {
-  state.filter = { author: '', group: '', tag: '', root: '' };
+  if (state.filter.marker && state.markerViewReturn) {
+    const saved = state.markerViewReturn;
+    state.markerViewReturn = null;
+    restoreLibraryView(saved).catch(error => toast(error.message, true));
+    return;
+  }
+  state.filter = { author: '', group: '', tag: '', root: '', marker: false };
   $('#search').value = '';
+  state.libraryPage = 1;
   loadLibrary().catch(error => toast(error.message, true));
+};
+
+$('#readingMarkers').onclick = () => {
+  if (state.filter.marker && state.markerViewReturn) {
+    const saved = state.markerViewReturn;
+    state.markerViewReturn = null;
+    restoreLibraryView(saved).catch(error => toast(error.message, true));
+    return;
+  }
+  state.markerViewReturn = currentLibraryView();
+  state.filter = { author: '', group: '', tag: '', root: '', marker: true };
+  $('#search').value = '';
+  state.libraryQueryKey = '';
+  state.libraryPage = 1;
+  loadLibrary().catch(error => toast(error.message, true));
+};
+
+$('#returnReadingPosition').onclick = () => {
+  goToReadingPosition().catch(error => toast(error.message, true));
 };
 
 $('#addRoot').onclick = async () => {
@@ -398,9 +581,16 @@ $('#addRoot').onclick = async () => {
 renderCards = function () {
   const lib = $('#library');
   $('#empty').classList.toggle('hidden', state.items.length > 0);
+  if (state.items.length === 0 && state.filter.marker) {
+    $('#empty h2').textContent = '目前沒有閱讀定位';
+    $('#empty p').textContent = '在漫畫卡片或作品資訊中按下圖釘，就能把目前看到的這本留下來。';
+  } else {
+    $('#empty h2').textContent = '書庫目前是空的';
+    $('#empty p').textContent = '新增漫畫資料夾後進行掃描，原始檔案不會被移動或改寫。';
+  }
   const start = (state.libraryPage - 1) * LIBRARY_PAGE_SIZE;
   const visibleComics = state.items.slice(start, start + LIBRARY_PAGE_SIZE);
-  lib.innerHTML = visibleComics.map(c => `<article class="card ${state.selected.has(c.id) ? 'selected' : ''}" data-id="${c.id}"><div class="cover"><input class="select-comic" type="checkbox" aria-label="選取 ${esc(c.name)}" ${state.selected.has(c.id) ? 'checked' : ''}>${c.cover_name ? `<img loading="lazy" src="${imageUrl(c.id, c.cover_name)}">` : ''}<span class="format">${esc(c.extension.slice(1).toUpperCase())}</span><span class="pages">${c.image_count} 頁</span></div><div class="card-body"><h3 title="${esc(c.name)}">${esc(c.name)}</h3><div class="meta">${c.author ? `<span class="tag">${esc(c.author)}</span>` : ''}<span>${fmt(c.size_bytes)}</span></div><div class="card-path" title="${esc(c.path)}">${esc(c.path)}</div><div class="card-tags">${(c.tags || []).map(tag => `<span class="card-tag">#${esc(tag)}</span>`).join('')}</div></div></article>`).join('');
+  lib.innerHTML = visibleComics.map(c => `<article class="card ${state.selected.has(c.id) ? 'selected' : ''}" data-id="${c.id}"><div class="cover"><input class="select-comic" type="checkbox" aria-label="選取 ${esc(c.name)}" ${state.selected.has(c.id) ? 'checked' : ''}><button type="button" class="reading-position-toggle ${c.reading_position ? 'marked' : ''}" data-reading-position="${c.id}" aria-label="${c.reading_position ? '清除' : '設為'}上次閱讀位置" title="${c.reading_position ? '清除上次閱讀位置' : '設為上次看到這裡'}">🔖</button><button type="button" class="reading-marker ${c.reading_marker ? 'marked' : ''}" data-reading-marker="${c.id}" aria-label="${c.reading_marker ? '移除' : '設為'}標記" title="${c.reading_marker ? '移除標記' : '設為標記'}">📍</button>${c.cover_name ? `<img loading="lazy" src="${imageUrl(c.id, c.cover_name)}">` : ''}<span class="format">${esc(c.extension.slice(1).toUpperCase())}</span><span class="pages">${c.image_count} 頁</span></div><div class="card-body"><h3 title="${esc(c.name)}">${esc(c.name)}</h3><div class="meta">${c.author ? `<span class="tag">${esc(c.author)}</span>` : ''}<span>${fmt(c.size_bytes)}</span>${c.reading_position ? '<span class="position-label">🔖 上次看到這裡</span>' : ''}${c.reading_marker ? '<span class="marker-label">📍 已標記</span>' : ''}</div><div class="card-path" title="${esc(c.path)}">${esc(c.path)}</div><div class="card-tags">${(c.tags || []).map(tag => `<span class="card-tag">#${esc(tag)}</span>`).join('')}</div></div></article>`).join('');
   renderLibraryPagination();
   updateBatchBar();
 };
@@ -456,6 +646,43 @@ $('#library').addEventListener('click', event => {
   const id = Number(card.dataset.id);
   if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
   renderCards();
+}, true);
+
+$('#library').addEventListener('click', async event => {
+  const positionButton = event.target.closest('[data-reading-position]');
+  if (positionButton) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const comicId = Number(positionButton.dataset.readingPosition);
+    try {
+      if (state.readingPosition?.set && Number(state.readingPosition.comic_id) === comicId) {
+        await clearReadingPosition();
+        toast('已清除上次閱讀位置');
+      } else {
+        await setReadingPosition(comicId);
+        toast('已記住上次看到這本漫畫的位置');
+      }
+    } catch (error) {
+      toast(error.message, true);
+    }
+    return;
+  }
+  const button = event.target.closest('[data-reading-marker]');
+  if (!button) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const comic = state.items.find(item => item.id === Number(button.dataset.readingMarker));
+  if (!comic) return;
+  try {
+    await api(`/api/comics/${comic.id}/reading-marker`, {
+      method: 'PUT',
+      body: JSON.stringify({ marked: !comic.reading_marker })
+    });
+    toast(comic.reading_marker ? '已移除閱讀定位' : '已設為閱讀定位');
+    await loadLibrary();
+  } catch (error) {
+    toast(error.message, true);
+  }
 }, true);
 
 $('#clearSelection').onclick = () => { state.selected.clear(); renderCards(); };
@@ -1124,4 +1351,5 @@ $('#webDownloadJobs').onclick = async event => {
   }
 };
 
-Promise.all([loadLibrary(), loadRoots(), restoreActiveWebDownloads()]).catch(error => toast(error.message, true));
+Promise.all([loadLibrary(), loadRoots(), loadReadingPosition(), restoreActiveWebDownloads()]).catch(error => toast(error.message, true));
+

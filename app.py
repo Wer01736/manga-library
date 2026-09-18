@@ -191,6 +191,17 @@ def init_db() -> None:
                 group_id INTEGER NOT NULL REFERENCES custom_groups(id) ON DELETE CASCADE,
                 PRIMARY KEY (comic_id, group_id)
             );
+            CREATE TABLE IF NOT EXISTS reading_markers (
+                comic_id INTEGER PRIMARY KEY REFERENCES comics(id) ON DELETE CASCADE,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS reading_position (
+                id INTEGER PRIMARY KEY CHECK (id=1),
+                comic_id INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
+                context_json TEXT NOT NULL DEFAULT '{}',
+                saved_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS duplicate_reviews (
                 left_comic_id INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
                 right_comic_id INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
@@ -976,6 +987,15 @@ class ComicTagsRequest(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=50)
 
 
+class ReadingMarkerRequest(BaseModel):
+    marked: bool = True
+
+
+class ReadingPositionRequest(BaseModel):
+    comic_id: int
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
 class BatchTagsRequest(BaseModel):
     comic_ids: list[int] = Field(min_length=1, max_length=1000)
     tags: list[str] = Field(min_length=1, max_length=50)
@@ -1623,7 +1643,7 @@ def delete_scan_issue(issue_id: int, request: FileActionRequest) -> dict[str, st
 @app.get("/api/comics")
 def comics(
     q: str = "", author: str = "", group: str = "", status: str = "available",
-    root: str = "", tag: str = "",
+    root: str = "", tag: str = "", marker: int = 0,
     sort: str = Query("modified_at", pattern="^(name|author|group_name|size_bytes|modified_at)$"),
     direction: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, Any]:
@@ -1649,10 +1669,12 @@ def comics(
     if tag:
         clauses.append("EXISTS (SELECT 1 FROM comic_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.comic_id=comics.id AND t.name=?)")
         params.append(tag)
+    if marker:
+        clauses.append("EXISTS (SELECT 1 FROM reading_markers rm WHERE rm.comic_id=comics.id)")
     where = "WHERE " + " AND ".join(clauses) if clauses else ""
     with connect() as conn:
         rows = [dict(row) for row in conn.execute(
-            f"SELECT * FROM comics {where} ORDER BY {sort} COLLATE NOCASE {direction.upper()}, name COLLATE NOCASE ASC",
+            f"SELECT comics.*, CASE WHEN EXISTS (SELECT 1 FROM reading_markers rm WHERE rm.comic_id=comics.id) THEN 1 ELSE 0 END AS reading_marker, CASE WHEN EXISTS (SELECT 1 FROM reading_position rp WHERE rp.comic_id=comics.id) THEN 1 ELSE 0 END AS reading_position FROM comics {where} ORDER BY {sort} COLLATE NOCASE {direction.upper()}, name COLLATE NOCASE ASC",
             params,
         )]
         tag_map: dict[int, list[str]] = {}
@@ -1676,7 +1698,10 @@ def comics(
         groups = [row[0] for row in conn.execute(
             "SELECT DISTINCT group_name FROM comics WHERE status='available' AND group_name<>'' ORDER BY group_name"
         )]
-    return {"items": rows, "authors": authors, "groups": groups}
+        marker_count = conn.execute(
+            "SELECT COUNT(*) FROM reading_markers JOIN comics ON comics.id=reading_markers.comic_id WHERE comics.status='available'"
+        ).fetchone()[0]
+    return {"items": rows, "authors": authors, "groups": groups, "marker_count": marker_count}
 
 
 @app.get("/api/comics/{comic_id}")
@@ -1694,7 +1719,70 @@ def comic_detail(comic_id: int) -> dict[str, Any]:
             "SELECT custom_groups.name FROM comic_groups JOIN custom_groups ON custom_groups.id=comic_groups.group_id WHERE comic_groups.comic_id=? ORDER BY custom_groups.name COLLATE NOCASE",
             (comic_id,),
         )]
+        row["reading_marker"] = bool(conn.execute(
+            "SELECT 1 FROM reading_markers WHERE comic_id=?", (comic_id,)
+        ).fetchone())
+        row["reading_position"] = bool(conn.execute(
+            "SELECT 1 FROM reading_position WHERE comic_id=?", (comic_id,)
+        ).fetchone())
     return row
+
+
+@app.put("/api/comics/{comic_id}/reading-marker")
+def set_reading_marker(comic_id: int, request: ReadingMarkerRequest) -> dict[str, Any]:
+    get_comic(comic_id)
+    with connect() as conn:
+        if request.marked:
+            stamp = now_ts()
+            conn.execute(
+                "INSERT INTO reading_markers(comic_id,created_at,updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(comic_id) DO UPDATE SET updated_at=excluded.updated_at",
+                (comic_id, stamp, stamp),
+            )
+        else:
+            conn.execute("DELETE FROM reading_markers WHERE comic_id=?", (comic_id,))
+    return {"reading_marker": request.marked}
+
+
+@app.get("/api/reading-position")
+def get_reading_position() -> dict[str, Any]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT comic_id,context_json,saved_at FROM reading_position WHERE id=1"
+        ).fetchone()
+    if not row:
+        return {"set": False}
+    try:
+        context = json.loads(row["context_json"])
+    except (TypeError, ValueError):
+        context = {}
+    return {
+        "set": True,
+        "comic_id": row["comic_id"],
+        "context": context if isinstance(context, dict) else {},
+        "saved_at": row["saved_at"],
+    }
+
+
+@app.put("/api/reading-position")
+def set_reading_position(request: ReadingPositionRequest) -> dict[str, Any]:
+    get_comic(request.comic_id)
+    context_json = json.dumps(request.context, ensure_ascii=False, separators=(",", ":"))
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO reading_position(id,comic_id,context_json,saved_at) VALUES (1,?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET comic_id=excluded.comic_id,"
+            "context_json=excluded.context_json,saved_at=excluded.saved_at",
+            (request.comic_id, context_json, now_ts()),
+        )
+    return {"set": True, "comic_id": request.comic_id, "context": request.context}
+
+
+@app.delete("/api/reading-position")
+def clear_reading_position() -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM reading_position WHERE id=1")
+    return {"set": False}
 
 
 @app.put("/api/comics/{comic_id}/tags")
@@ -2223,3 +2311,4 @@ if __name__ == "__main__":
 
     port = 8765
     uvicorn.run(app, host="127.0.0.1", port=port)
+
