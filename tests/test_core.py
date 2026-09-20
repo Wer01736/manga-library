@@ -577,6 +577,38 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in by_group["items"]], [comic_id])
         self.assertEqual([item["id"] for item in by_tag["items"]], [comic_id])
 
+    def test_standalone_reader_stays_read_only_and_does_not_save_page(self):
+        reader_html = (PROJECT_DIR / "static" / "reader.html").read_text(encoding="utf-8")
+        reader_script = (PROJECT_DIR / "static" / "reader.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="readerApp"', reader_html)
+        self.assertIn('/reader.js', reader_html)
+        self.assertIn("new URLSearchParams(window.location.search).get('comic')", reader_script)
+        self.assertNotIn("get('page')", reader_script)
+        self.assertNotIn("localStorage", reader_script)
+        self.assertNotIn("sessionStorage", reader_script)
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            self.assertNotIn(f"method: '{method}'", reader_script)
+
+    def test_start_reading_is_a_real_new_tab_link(self):
+        enhancements = (PROJECT_DIR / "static" / "enhancements.js").read_text(encoding="utf-8")
+        app_script = (PROJECT_DIR / "static" / "app.js").read_text(encoding="utf-8")
+        index_html = (PROJECT_DIR / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('href="/reader.html?comic=${c.id}"', enhancements)
+        self.assertIn('target="_blank" rel="noopener" data-read-once="new"', enhancements)
+        self.assertIn('>▼</button>', enhancements)
+        self.assertIn('id="manageComicImages"', enhancements)
+        self.assertIn('id="openSettings"', index_html)
+        self.assertIn('id="openReadingSetting"', index_html)
+        self.assertIn('name="readingOpenMode" value="same"', index_html)
+        self.assertIn('name="readingOpenMode" value="new"', index_html)
+        self.assertNotIn('所有檔案只在這台電腦處理', index_html)
+        self.assertIn("$('#settingsDialog').addEventListener('cancel', showSettingsHome)", enhancements)
+        self.assertIn('function updateReadingPositionCards(comicId)', enhancements)
+        self.assertNotIn('🔖 上次看到這裡</span>', enhancements)
+        self.assertNotIn('if(e.target.id==="readComic")startReader()', app_script)
+
 
 if __name__ == "__main__":
     unittest.main()

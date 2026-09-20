@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>本機漫畫書庫</title>
   <link rel="stylesheet" href="/styles.css?v=20260809-2">
-  <link rel="stylesheet" href="/enhancements.css?v=20260920-1">
+  <link rel="stylesheet" href="/enhancements.css?v=20260920-3">
   <link rel="stylesheet" href="/reorder-fast.css?v=20260811-8">
   <link rel="stylesheet" href="/pagination-jump.css?v=20260811-1">
   <link rel="stylesheet" href="/editor-actions.css?v=20260811-2">
@@ -25,7 +25,7 @@
     </details>
     <section><h3 class="section-title"><span>自訂分組</span><button id="addGroup" title="建立分組">＋</button></h3><select id="groups" class="sidebar-select"><option value="">全部分組</option></select></section>
     <section><h3 class="section-title"><span>標籤</span><button id="addTag" title="建立標籤">＋</button></h3><select id="tags" class="sidebar-select"><option value="">全部標籤</option></select></section>
-    <div class="privacy">🔒 所有檔案只在這台電腦處理</div>
+    <button id="openSettings" class="sidebar-settings-launch" type="button" aria-label="開啟設定">⚙<span>設定</span></button>
   </aside>
 
   <main>
@@ -50,6 +50,27 @@
   <dialog id="detailDialog" class="detail-dialog">
     <button class="dialog-close" data-close="detailDialog">×</button>
     <div id="detailBody"></div>
+  </dialog>
+
+  <dialog id="settingsDialog" class="settings-dialog">
+    <button class="dialog-close" data-close="settingsDialog" aria-label="關閉設定">×</button>
+    <div id="settingsHome">
+      <p class="eyebrow">SETTINGS</p>
+      <h2>設定</h2>
+      <button id="openReadingSetting" class="settings-row" type="button">
+        <span><strong>預設閱讀方式</strong><small id="readingModeSummary"></small></span><span aria-hidden="true">›</span>
+      </button>
+    </div>
+    <div id="readingSettingPanel" class="hidden">
+      <button id="backToSettings" class="settings-back" type="button">‹ 返回設定</button>
+      <h2>預設閱讀方式</h2>
+      <fieldset class="reading-open-setting">
+        <legend>點擊「開始閱讀」時</legend>
+        <label><input type="radio" name="readingOpenMode" value="same"><span><strong>在目前頁面閱讀</strong><small>使用書庫內原本的閱讀畫面。</small></span></label>
+        <label><input type="radio" name="readingOpenMode" value="new"><span><strong>在新分頁閱讀</strong><small>保留書庫頁面，另開純閱讀分頁。</small></span></label>
+      </fieldset>
+      <div class="dialog-actions"><button id="saveReadingSetting" class="primary" type="button">儲存</button></div>
+    </div>
   </dialog>
 
   <div id="reader" class="reader hidden" tabindex="-1">
@@ -131,8 +152,8 @@
     <div class="delete-target"><strong id="deleteFileName"></strong><small id="deleteFilePath"></small></div>
     <div class="dialog-actions"><button id="cancelDelete" class="ghost">不要</button><button id="confirmDelete" class="danger">可以，刪除</button></div>
   </dialog>
-  <script src="/app.js?v=20260809-3"></script>
-  <script src="/enhancements.js?v=20260920-1"></script>
+  <script src="/app.js?v=20260920-1"></script>
+  <script src="/enhancements.js?v=20260920-5"></script>
   <script src="/reorder-fast.js?v=20260811-6"></script>
   <script src="/pagination-jump.js?v=20260811-1"></script>
   <script src="/editor-actions.js?v=20260811-1"></script>
