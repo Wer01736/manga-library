@@ -85,6 +85,7 @@ def _download_job_record(job: dict[str, Any]) -> dict[str, Any]:
         and key in {
             "id", "status", "title", "total", "completed", "message", "error",
             "archive_path", "archive_name", "source_url", "request_url", "root_path",
+            "source_category", "source_tags", "selected_tags",
             "created_at", "finished_at", "retry_count", "cancel_requested",
         }
     }
@@ -692,6 +693,29 @@ def extract_wnacg_album(index_html: str, item_script: str, source_url: str) -> d
     if not page_match:
         raise ValueError("網站頁面中找不到漫畫總頁數")
     reported_page_count = int(page_match.group(1))
+    category_match = re.search(
+        r"<label[^>]*>\s*分類\s*[：:]\s*(.*?)</label>", index_html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    source_category = (
+        html.unescape(re.sub(r"<[^>]+>", "", category_match.group(1))).strip()
+        if category_match else ""
+    )
+    tag_block = re.search(
+        r"<div[^>]*class=[\"'][^\"']*\baddtags\b[^\"']*[\"'][^>]*>(.*?)</div>",
+        index_html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    source_tags: list[str] = []
+    if tag_block:
+        for raw_tag in re.findall(
+            r"<a[^>]*class=[\"'][^\"']*\btagshow\b[^\"']*[\"'][^>]*>(.*?)</a>",
+            tag_block.group(1),
+            re.IGNORECASE | re.DOTALL,
+        ):
+            tag = html.unescape(re.sub(r"<[^>]+>", "", raw_tag)).strip()
+            if tag and tag.casefold() not in {item.casefold() for item in source_tags}:
+                source_tags.append(tag)
     urls = re.findall(
         r"[\"'](https?://[^\"']+?\.(?:jpe?g|png|webp|gif|bmp|avif)(?:\?[^\"']*)?)[\"']",
         item_script,
@@ -717,6 +741,8 @@ def extract_wnacg_album(index_html: str, item_script: str, source_url: str) -> d
         "page_count_adjusted": actual_page_count != reported_page_count,
         "image_urls": unique_urls,
         "source_url": source_url,
+        "source_category": source_category,
+        "source_tags": source_tags,
     }
 
 
@@ -821,6 +847,10 @@ def run_download_job(job_id: str, url: str, root_path: Path) -> None:
     try:
         update_download_job(job_id, status="running", message="正在讀取作品資料")
         album = inspect_wnacg_album(url)
+        selected_tags = download_jobs[job_id].get("selected_tags")
+        if not isinstance(selected_tags, list):
+            selected_tags = list(album.get("source_tags", []))
+        selected_tags = clean_tag_names(selected_tags)
         total = album["page_count"]
         stem = safe_download_stem(album["title"])
         target = root_path / f"{stem}.zip"
@@ -836,6 +866,8 @@ def run_download_job(job_id: str, url: str, root_path: Path) -> None:
             page_files.append(temp_dir / f"{number:0{width}d}{extension}")
         update_download_job(
             job_id, title=album["title"], archive_name=f"{stem}.zip", total=total, completed=0,
+            source_category=album.get("source_category", ""),
+            source_tags=album.get("source_tags", []), selected_tags=selected_tags,
             message=f"準備下載 {total} 頁",
         )
         deadline = time.monotonic() + DOWNLOAD_TOTAL_TIMEOUT
@@ -883,6 +915,15 @@ def run_download_job(job_id: str, url: str, root_path: Path) -> None:
             raise FileExistsError(f"建立期間出現同名檔案，為避免覆蓋已取消：{target.name}")
         os.replace(temp_archive, target)
         scan_directory(root_path)
+        with connect() as conn:
+            comic = conn.execute("SELECT id FROM comics WHERE path=?", (str(target),)).fetchone()
+            if comic:
+                tag_ids = ensure_tags(conn, selected_tags)
+                conn.execute("DELETE FROM comic_tags WHERE comic_id=?", (comic["id"],))
+                conn.executemany(
+                    "INSERT INTO comic_tags(comic_id,tag_id) VALUES (?,?)",
+                    [(comic["id"], tag_id) for tag_id in tag_ids.values()],
+                )
         update_download_job(
             job_id, status="completed", completed=total, archive_path=str(target),
             message=f"下載完成：{target.name}", finished_at=now_ts(),
@@ -1048,6 +1089,7 @@ class WebDownloadPreviewRequest(BaseModel):
 class WebDownloadStartRequest(BaseModel):
     url: str = Field(min_length=1, max_length=1000)
     root_path: str = Field(min_length=1, max_length=1000)
+    tags: list[str] | None = Field(default=None, max_length=50)
 
 
 class WebDownloadBatchPreviewRequest(BaseModel):
@@ -1094,6 +1136,9 @@ def preview_web_download(request: WebDownloadPreviewRequest) -> dict[str, Any]:
         "page_count_adjusted": album.get("page_count_adjusted", False),
         "archive_name": f"{safe_download_stem(album['title'])}.zip",
         "source_url": album["source_url"],
+        "source_category": album.get("source_category", ""),
+        "source_tags": album.get("source_tags", []),
+        "selected_tags": list(album.get("source_tags", [])),
     }
 
 
@@ -1139,6 +1184,9 @@ def preview_web_download_batch(request: WebDownloadBatchPreviewRequest) -> dict[
                 "reported_page_count": album.get("reported_page_count", album["page_count"]),
                 "page_count_adjusted": album.get("page_count_adjusted", False),
                 "archive_name": archive_name,
+                "source_category": album.get("source_category", ""),
+                "source_tags": album.get("source_tags", []),
+                "selected_tags": list(album.get("source_tags", [])),
                 "status": "ready",
                 "reason": "",
             }
@@ -1211,6 +1259,9 @@ def start_web_download(request: WebDownloadStartRequest) -> dict[str, Any]:
         "source_url": source_url,
         "request_url": request.url,
         "root_path": str(root_path),
+        "source_category": "",
+        "source_tags": [],
+        "selected_tags": clean_tag_names(request.tags) if request.tags is not None else None,
         "created_at": now_ts(),
         "finished_at": None,
         "retry_count": 0,

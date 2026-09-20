@@ -239,6 +239,18 @@ class CoreTests(unittest.TestCase):
             ],
         )
 
+    def test_wnacg_album_parser_extracts_source_category_and_tags(self):
+        index_html = (
+            '<h2>標籤測試作品</h2><label>分類：同人誌／漢化</label><label>頁數：2P</label>'
+            '<div class="addtags">標籤：'
+            '<a class="tagshow">作者</a><a class="tagshow">泳裝</a>'
+            '<a class="tagshow">作者</a></div>'
+        )
+        item_script = 'mReader.initData({"page_url":["http://img.example/001.webp","http://img.example/002.webp"]});'
+        result = app.extract_wnacg_album(index_html, item_script, "https://www.wnacg.com/example")
+        self.assertEqual(result["source_category"], "同人誌／漢化")
+        self.assertEqual(result["source_tags"], ["作者", "泳裝"])
+
     def test_wnacg_album_parser_rejects_missing_pages(self):
         with self.assertRaisesRegex(ValueError, "頁數驗證失敗"):
             app.extract_wnacg_album(
@@ -323,6 +335,40 @@ class CoreTests(unittest.TestCase):
         self.assertFalse((self.root / "失敗測試作品.zip").exists())
         self.assertEqual(list(self.root.glob(".comic-download-*")), [])
         self.assertEqual(list(self.root.glob("*.partial")), [])
+
+    def test_completed_web_download_applies_selected_source_tags(self):
+        job_id = uuid.uuid4().hex
+        app.download_jobs[job_id] = {
+            "id": job_id, "status": "queued", "title": "", "total": 0, "completed": 0,
+            "message": "", "error": "", "archive_path": "", "created_at": app.now_ts(),
+            "finished_at": None, "selected_tags": ["自訂保留", "泳裝"],
+            "_cancel_event": threading.Event(), "_user_cancelled": False,
+        }
+        album = {
+            "title": "標籤下載測試作品", "page_count": 2,
+            "image_urls": ["http://img.example/001.jpg", "http://img.example/002.jpg"],
+            "source_url": "https://www.wnacg.com/example",
+            "source_category": "同人誌／漢化", "source_tags": ["來源標籤", "泳裝"],
+        }
+
+        def fake_download(_job_id, _page_number, _url, output_path, _referer, _deadline, _cancel_event):
+            output_path.write_bytes(jpeg("red"))
+
+        with mock.patch.object(app, "inspect_wnacg_album", return_value=album), mock.patch.object(
+            app, "download_one_page", side_effect=fake_download
+        ):
+            app.run_download_job(job_id, "https://www.wnacg.com/example-aid-1.html", self.root)
+
+        self.assertEqual(app.download_jobs[job_id]["status"], "completed")
+        with app.connect() as conn:
+            comic_id = conn.execute(
+                "SELECT id FROM comics WHERE path=?", (str(self.root / "標籤下載測試作品.zip"),)
+            ).fetchone()[0]
+            tags = [row[0] for row in conn.execute(
+                "SELECT tags.name FROM comic_tags JOIN tags ON tags.id=comic_tags.tag_id WHERE comic_id=? ORDER BY tags.name",
+                (comic_id,),
+            )]
+        self.assertEqual(tags, ["泳裝", "自訂保留"])
 
     def test_cancelled_web_download_can_be_retried(self):
         job_id = uuid.uuid4().hex

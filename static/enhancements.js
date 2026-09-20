@@ -590,7 +590,7 @@ renderCards = function () {
   }
   const start = (state.libraryPage - 1) * LIBRARY_PAGE_SIZE;
   const visibleComics = state.items.slice(start, start + LIBRARY_PAGE_SIZE);
-  lib.innerHTML = visibleComics.map(c => `<article class="card ${state.selected.has(c.id) ? 'selected' : ''}" data-id="${c.id}"><div class="cover"><input class="select-comic" type="checkbox" aria-label="選取 ${esc(c.name)}" ${state.selected.has(c.id) ? 'checked' : ''}><button type="button" class="reading-position-toggle ${c.reading_position ? 'marked' : ''}" data-reading-position="${c.id}" aria-label="${c.reading_position ? '清除' : '設為'}上次閱讀位置" title="${c.reading_position ? '清除上次閱讀位置' : '設為上次看到這裡'}">🔖</button><button type="button" class="reading-marker ${c.reading_marker ? 'marked' : ''}" data-reading-marker="${c.id}" aria-label="${c.reading_marker ? '移除' : '設為'}標記" title="${c.reading_marker ? '移除標記' : '設為標記'}">📍</button>${c.cover_name ? `<img loading="lazy" src="${imageUrl(c.id, c.cover_name)}">` : ''}<span class="format">${esc(c.extension.slice(1).toUpperCase())}</span><span class="pages">${c.image_count} 頁</span></div><div class="card-body"><h3 title="${esc(c.name)}">${esc(c.name)}</h3><div class="meta">${c.author ? `<span class="tag">${esc(c.author)}</span>` : ''}<span>${fmt(c.size_bytes)}</span>${c.reading_position ? '<span class="position-label">🔖 上次看到這裡</span>' : ''}${c.reading_marker ? '<span class="marker-label">📍 已標記</span>' : ''}</div><div class="card-path" title="${esc(c.path)}">${esc(c.path)}</div><div class="card-tags">${(c.tags || []).map(tag => `<span class="card-tag">#${esc(tag)}</span>`).join('')}</div></div></article>`).join('');
+  lib.innerHTML = visibleComics.map(c => `<article class="card ${state.selected.has(c.id) ? 'selected' : ''}" data-id="${c.id}"><div class="cover"><input class="select-comic" type="checkbox" aria-label="選取 ${esc(c.name)}" ${state.selected.has(c.id) ? 'checked' : ''}><button type="button" class="reading-position-toggle ${c.reading_position ? 'marked' : ''}" data-reading-position="${c.id}" aria-label="${c.reading_position ? '清除' : '設為'}上次閱讀位置" title="${c.reading_position ? '清除上次閱讀位置' : '設為上次看到這裡'}">🔖</button><button type="button" class="reading-marker ${c.reading_marker ? 'marked' : ''}" data-reading-marker="${c.id}" aria-label="${c.reading_marker ? '移除' : '設為'}標記" title="${c.reading_marker ? '移除標記' : '設為標記'}">📍</button>${c.cover_name ? `<img loading="lazy" src="${imageUrl(c.id, c.cover_name)}">` : ''}<span class="format">${esc(c.extension.slice(1).toUpperCase())}</span><span class="pages">${c.image_count} 頁</span></div><div class="card-body"><h3 title="${esc(c.name)}">${esc(c.name)}</h3><div class="meta">${c.author ? `<span class="tag">${esc(c.author)}</span>` : ''}<span>${fmt(c.size_bytes)}</span>${c.reading_position ? '<span class="position-label">🔖 上次看到這裡</span>' : ''}${c.reading_marker ? '<span class="marker-label">📍 已標記</span>' : ''}</div><div class="card-path" title="${esc(c.path)}">${esc(c.path)}</div><div class="card-tags">${(c.tags || []).slice(0, 6).map(tag => `<span class="card-tag" title="#${esc(tag)}">#${esc(tag)}</span>`).join('')}</div></div></article>`).join('');
   renderLibraryPagination();
   updateBatchBar();
 };
@@ -953,6 +953,33 @@ function resetWebDownloadEntry() {
   $('#startWebDownload').disabled = true;
 }
 
+function renderSingleWebDownloadPreview() {
+  const data = webDownloadPreviewData;
+  if (!data) return;
+  const pageNote = data.page_count_adjusted
+    ? `（網站標示 ${data.reported_page_count}P，實際原圖清單 ${data.page_count} 頁）`
+    : '';
+  const tags = Array.isArray(data.selected_tags) ? data.selected_tags : [];
+  const tagChips = tags.length
+    ? tags.map(tag => `<span class="web-download-tag-chip"><span>${esc(tag)}</span><button type="button" data-remove-web-tag="${esc(tag)}" aria-label="移除標籤 ${esc(tag)}">×</button></span>`).join('')
+    : '<small class="muted">目前沒有預設標籤</small>';
+  $('#webDownloadPreview').innerHTML = `<strong>${esc(data.title)}</strong><span>${data.page_count} 頁 ${esc(pageNote)} · 將建立 ${esc(data.archive_name)}</span>${data.source_category ? `<span>來源分類：${esc(data.source_category)}</span>` : ''}<div class="web-download-tag-editor"><label>來源標籤（可刪除或新增）</label><div class="web-download-tags">${tagChips}<input id="webDownloadTagInput" type="text" maxlength="80" placeholder="輸入標籤後按 Enter"><button type="button" class="ghost" data-add-web-tag>加入</button></div><small>預設已帶入來源頁標籤，下載前可依需要調整。</small></div>`;
+  $('#webDownloadPreview').classList.remove('hidden');
+}
+
+function addSingleWebDownloadTag() {
+  const input = $('#webDownloadTagInput');
+  if (!input || !webDownloadPreviewData) return;
+  const name = input.value.trim().replace(/^#/, '');
+  if (!name) return;
+  if (name.length > 80) return toast('單一標籤不可超過 80 個字元', true);
+  const tags = Array.isArray(webDownloadPreviewData.selected_tags)
+    ? webDownloadPreviewData.selected_tags : (webDownloadPreviewData.selected_tags = []);
+  if (!tags.some(tag => tag.toLowerCase() === name.toLowerCase())) tags.push(name);
+  input.value = '';
+  renderSingleWebDownloadPreview();
+}
+
 function refreshWebDownloadMode() {
   const batch = isWebDownloadBatchMode();
   $('#webDownloadSingleField').classList.toggle('hidden', batch);
@@ -1098,7 +1125,7 @@ async function startCheckedWebDownloadEntry(entry) {
   try {
     const job = await api('/api/web-download/start', {
       method: 'POST',
-      body: JSON.stringify({ url: entry.url, root_path: $('#webDownloadRoot').value })
+      body: JSON.stringify({ url: entry.url, root_path: $('#webDownloadRoot').value, tags: entry.selected_tags || entry.source_tags || [] })
     });
     webDownloadJobs.set(job.id, entry);
     renderWebDownloadJob(job, entry);
@@ -1148,6 +1175,17 @@ async function drainWebDownloadBatchChecks() {
 }
 
 $('#webDownloadPreview').addEventListener('click', event => {
+  const removeTagButton = event.target.closest('[data-remove-web-tag]');
+  if (removeTagButton) {
+    const tag = removeTagButton.dataset.removeWebTag;
+    webDownloadPreviewData.selected_tags = (webDownloadPreviewData.selected_tags || []).filter(item => item !== tag);
+    renderSingleWebDownloadPreview();
+    return;
+  }
+  if (event.target.closest('[data-add-web-tag]')) {
+    addSingleWebDownloadTag();
+    return;
+  }
   const deleteButton = event.target.closest('[data-delete-batch-entry]');
   if (deleteButton) {
     webDownloadBatchEntries.delete(deleteButton.dataset.deleteBatchEntry);
@@ -1165,6 +1203,13 @@ $('#webDownloadPreview').addEventListener('click', event => {
   drainWebDownloadBatchChecks();
 });
 
+$('#webDownloadPreview').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && event.target.id === 'webDownloadTagInput') {
+    event.preventDefault();
+    addSingleWebDownloadTag();
+  }
+});
+
 $('#previewWebDownload').onclick = async () => {
   const batch = false;
   const url = $('#webDownloadUrl').value.trim();
@@ -1177,11 +1222,8 @@ $('#previewWebDownload').onclick = async () => {
     webDownloadPreviewData = await api('/api/web-download/preview', {
       method: 'POST', body: JSON.stringify({ url })
     });
-    const pageNote = webDownloadPreviewData.page_count_adjusted
-      ? `（網站標示 ${webDownloadPreviewData.reported_page_count}P，實際原圖清單 ${webDownloadPreviewData.page_count} 頁）`
-      : '';
-    $('#webDownloadPreview').innerHTML = `<strong>${esc(webDownloadPreviewData.title)}</strong><span>${webDownloadPreviewData.page_count} 頁 ${esc(pageNote)}· 將建立 ${esc(webDownloadPreviewData.archive_name)}</span>`;
-    $('#webDownloadPreview').classList.remove('hidden');
+    webDownloadPreviewData.selected_tags = [...(webDownloadPreviewData.source_tags || [])];
+    renderSingleWebDownloadPreview();
   } catch (error) {
     webDownloadPreviewData = null;
     $('#startWebDownload').disabled = true;
@@ -1270,7 +1312,7 @@ $('#startWebDownload').onclick = async () => {
   setWebDownloadControls(true);
   try {
     const job = await api('/api/web-download/start', {
-      method: 'POST', body: JSON.stringify({ url: entry.url, root_path: rootPath })
+      method: 'POST', body: JSON.stringify({ url: entry.url, root_path: rootPath, tags: entry.selected_tags || entry.source_tags || [] })
     });
     webDownloadJobs.set(job.id, entry);
     renderWebDownloadJob(job, entry);
