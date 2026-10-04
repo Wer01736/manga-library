@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>漫畫閱讀</title>
+  <link rel="stylesheet" href="/reader.css?v=20261003-1">
+</head>
+<body>
+  <main id="readerApp" class="reader-app hidden" aria-label="漫畫閱讀器">
+    <header class="reader-toolbar">
+      <div class="reader-heading">
+        <strong id="readerTitle"></strong>
+        <small id="readerFile"></small>
+      </div>
+      <button id="toggleChapters" class="reader-control hidden" type="button" aria-expanded="false">目錄</button>
+      <button id="toggleThumbs" class="reader-control" type="button" aria-expanded="false">縮圖總覽</button>
+    </header>
+
+    <section id="readerStage" class="reader-stage">
+      <button id="previousPage" class="page-button previous" type="button" aria-label="上一頁">‹</button>
+      <img id="pageImage" alt="漫畫頁面">
+      <button id="nextPage" class="page-button next" type="button" aria-label="下一頁">›</button>
+      <p id="pageNotice" class="page-notice hidden" role="alert"></p>
+    </section>
+
+    <footer class="reader-status">
+      <span id="pageName"></span>
+      <span id="pageCounter"></span>
+    </footer>
+
+    <div id="thumbStrip" class="thumb-strip hidden" aria-label="漫畫縮圖"></div>
+    <aside id="chapterPanel" class="chapter-panel hidden" aria-label="章節目錄">
+      <div class="chapter-panel-heading"><strong id="chapterPanelTitle">章節目錄</strong><button id="closeChapters" type="button" aria-label="關閉目錄">×</button></div>
+      <div id="chapterList" class="chapter-list"></div>
+    </aside>
+  </main>
+
+  <section id="readerMessage" class="reader-message" aria-live="polite">
+    <div class="message-card">
+      <div class="message-icon">漫</div>
+      <h1 id="messageTitle">正在開啟漫畫…</h1>
+      <p id="messageText">請稍候。</p>
+    </div>
+  </section>
+
+  <script src="/reader.js?v=20261003-1"></script>
+</body>
+</html>

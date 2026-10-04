@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>漫畫下載助手</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">EDGE 測試版</span><h1>漫畫下載助手</h1><p>支援 WNACG、18comic 與 nhentai。</p></header>
+    <section class="card">
+      <h2>目前頁面</h2><p id="page-title" class="page-title">正在讀取…</p><p id="page-host" class="muted"></p>
+    </section>
+    <section class="card">
+      <h2>下載位置</h2>
+      <select id="root-select" disabled><option value="">正在讀取書庫位置…</option></select>
+      <button id="save-button" class="primary" type="button" disabled>設定並下載</button>
+      <p class="hint">只需設定一次；之後點擴充功能就會直接下載。要更換位置，請在漫畫書庫頁開啟擴充功能。</p>
+    </section>
+    <section class="card" hidden>
+      <h2>從文件批次加入</h2>
+      <input id="url-file" type="file" accept=".txt,.csv,.md,.log,.json,.html,text/plain,text/csv,text/markdown,application/json,text/html">
+      <button id="import-button" class="primary" type="button" disabled>讀取文件並加入下載</button>
+      <p id="import-summary" class="hint">可讀取文字型文件中的多行網址，並自動去除重複網址。</p>
+    </section>
+    <section class="card queue-card">
+      <h2>原本下載功能</h2>
+      <p id="queue-summary" class="queue-summary">準備中…</p>
+      <p class="hint">不會自動切換頁面；檢查結果、重複項目與下載進度可到漫畫書庫查看。</p>
+    </section>
+    <p id="status" class="status" role="status">正在連接漫畫書庫…</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

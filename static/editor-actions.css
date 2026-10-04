@@ -1,0 +1,7 @@
+.editor-head > .editor-actions { display:grid; justify-items:stretch; align-items:stretch; gap:8px; min-width:200px; }
+.editor-return-action { display:flex; }
+.editor-return-action button { width:100%; }
+.editor-commit-actions { display:flex; gap:8px; justify-content:flex-end; }
+.editor-batch-actions { display:flex; }
+.editor-batch-actions button { width:100%; }
+@media (max-width:850px) { .editor-head > .editor-actions { min-width:0; width:100%; margin-top:12px; } .editor-commit-actions { justify-content:stretch; } .editor-commit-actions button { flex:1; } }

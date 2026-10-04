@@ -1,0 +1,48 @@
+# Private runtime data and local indexes
+data/
+backups/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+18comic_manifests.json
+web_download_jobs*.json
+web_download_sources.json
+
+# Portable builds and generated binaries
+portable_build/
+build/
+dist/
+*.exe
+*.dll
+*.pyd
+*.pkg
+*.pyz
+
+# Manga archives and local collections
+*.zip
+*.cbz
+*.cbr
+*.rar
+*.7z
+
+# Runtime logs, caches, and temporary test output
+*.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.test_runtime/
+tmp*/
+.coverage
+htmlcov/
+
+# Local environments and editor settings
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
