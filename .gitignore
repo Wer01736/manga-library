@@ -46,3 +46,20 @@ venv/
 .vscode/
 Thumbs.db
 Desktop.ini
+
+# Private maintainer notes and machine-specific audit reports
+AGENTS.md
+AI執行手冊_啟動修復與架構精簡.md
+架構審視報告.md
+下載流程與路徑實測報告_*.md
+
+# Local translation experiments and one-off maintenance utilities
+docs/日文漫畫翻譯_SOP.md
+prepare_translation_batch.py
+prepare_translation_calibration.py
+translated_zip_pipeline.py
+translation-config-*.json
+translation_model_*.py
+translation_model_*.json
+translation_overlay_prototype.py
+scan_path.py
